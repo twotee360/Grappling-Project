@@ -1,0 +1,184 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.Xml.Serialization;
+using Unity.VisualScripting.Dependencies.Sqlite;
+using UnityEngine;
+
+public class PlayerMove : MonoBehaviour
+{
+    float playerHeight = 2f;
+
+    public float moveSpeed = 6f;
+    public float movementMultiplier = 10f;
+    public float airMultiplier = 0.4f;
+
+    public float fallMultiplier;
+
+    public Transform orientation;
+
+    KeyCode jumpKey = KeyCode.Space;
+    public float jumpForce = 5f;
+
+    float horizontalMovement;
+    float verticalMovement;
+
+    bool isGrounded;
+
+    float groundDrag = 6f;
+    float airDrag = 0f;
+
+    Vector3 moveDirection;
+
+    Rigidbody rb;
+
+    public Transform player;
+    public Transform cam;
+
+    public LayerMask grappable;
+    public float grapplingDistance = 10f;
+    public float speed = 20f;
+    
+    private Vector3 grapplingPoint;
+    private bool isGrappling = false;
+
+    public float force;
+    public float maxLength;
+
+    private SpringJoint spring;
+
+    private LineRenderer lineRenderer;
+
+    private void Start()
+    {
+        rb = GetComponent<Rigidbody>();
+        rb.freezeRotation = true;
+
+        lineRenderer = GetComponent<LineRenderer>();
+        lineRenderer.enabled = false;
+    }
+
+    private void Update()
+    {
+        isGrounded = Physics.Raycast(transform.position, Vector3.down, playerHeight / 2 + 0.1f);
+        
+        MyInput();
+        ControlDrag();
+
+        if (Input.GetKeyDown(jumpKey) && isGrounded)
+        {
+            Jump();
+        }
+
+        if (rb.velocity.y < 0.05)
+        {
+            rb.velocity += Vector3.up * Physics.gravity.y * (fallMultiplier - 0.5f) * Time.deltaTime;
+        }
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (!isGrappling)
+            {
+                StartGrapple();
+                print("mouse button down");
+            }
+        }
+
+        if (Input.GetMouseButton(0))
+        {
+            if (isGrappling)
+            {
+                UpdateGrapple();
+            }
+        }
+
+        if (Input.GetMouseButtonUp(0))
+        {
+            if (isGrappling)
+            {
+                StopGrapple();
+            }
+        }
+    }
+
+    void StartGrapple()
+    {
+        RaycastHit hit;
+        if (Physics.Raycast(cam.position, cam.forward, out hit, grapplingDistance, grappable))
+        {
+            grapplingPoint = hit.point;
+
+            spring = player.gameObject.AddComponent<SpringJoint>();
+            spring.connectedBody = hit.rigidbody;
+            spring.maxDistance = maxLength;
+            spring.autoConfigureConnectedAnchor = false;
+            spring.connectedAnchor = Vector3.zero;
+
+            grapplingPoint = hit.point;
+            isGrappling = true;
+            lineRenderer.enabled = true;
+            lineRenderer.SetPosition(0, player.position);
+            lineRenderer.SetPosition(1, grapplingPoint);
+            print("StartGrapple has been called");   
+        }
+
+    }
+
+    void UpdateGrapple()
+    { 
+        Vector3 forceDirection = (grapplingPoint - player.position).normalized;
+        rb.AddForce(forceDirection * force, ForceMode.Force);
+    
+        lineRenderer.SetPosition(0, player.position);
+        lineRenderer.SetPosition(1, grapplingPoint);
+    }
+
+    void StopGrapple()
+    {
+        Destroy(spring);
+        isGrappling = false;
+        lineRenderer.enabled = false;
+    }
+
+    void Jump()
+    {
+        rb.AddForce(transform.up * jumpForce, ForceMode.Impulse);
+    }
+
+    void MyInput()
+    {
+        horizontalMovement = Input.GetAxisRaw("Horizontal");
+        verticalMovement = Input.GetAxisRaw("Vertical");
+
+        moveDirection = orientation.forward * verticalMovement + orientation.right * horizontalMovement;
+    }
+
+    void ControlDrag()
+    {
+        if (isGrounded)
+        {
+            rb.drag = groundDrag;
+        }
+        else
+        {
+            rb.drag = airDrag;
+        }
+    }
+
+    private void FixedUpdate()
+    {
+        MovePlayer();
+    }
+
+    void MovePlayer()
+    {
+        if (isGrounded)
+        {
+            rb.AddForce(moveDirection.normalized * moveSpeed * movementMultiplier, ForceMode.Acceleration);
+        }
+        else if (!isGrounded)
+        {
+            rb.AddForce(moveDirection.normalized * moveSpeed * movementMultiplier * airMultiplier, ForceMode.Acceleration);
+        }
+    }
+
+}
